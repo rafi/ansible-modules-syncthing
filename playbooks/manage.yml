@@ -1,0 +1,61 @@
+---
+
+- hosts: syncthing
+  vars:
+    syncthing_api: 127.0.0.1:8384
+    syncthing_service_user: deploy
+    syncthing_folders:
+      - path: /srv/data/media
+        id: media
+        group: staff
+        mode: "0775"
+      - id: default
+        state: absent
+
+  tasks:
+    - name: Ensure directories state
+      file:
+        path:  '{{ item.path }}'
+        state: '{{ "absent" if item.state|d("") == "absent" else "directory" }}'
+        owner: '{{ syncthing_service_user }}'
+        group: '{{ item.group | default("root") }}'
+        mode:  '{{ item.mode  | default("0755") }}'
+      with_items: "{{ syncthing_folders }}"
+
+    - name: Get system config to grab unique id of each machine
+      uri:
+        url: "http://{{ syncthing_api }}/rest/system/config"
+        return_content: no
+        status_code: [ 200, 403 ]
+      register: syncthing_config_raw
+      check_mode: no
+
+    - name: Set each machine with a unique id
+      set_fact:
+        syncthing_id: "{{ syncthing_config_raw.x_syncthing_id }}"
+        syncthing_ids: []
+
+    - name: Prepare a list of all machine ids
+      set_fact:
+        syncthing_ids: "{{ syncthing_ids + [ hostvars[item].syncthing_id ] }}"
+      when: inventory_hostname != item
+      with_items: "{{ groups['syncthing'] }}"
+
+    - name: Ensure syncthing devices
+      syncthing_device:
+        id: "{{ hostvars[item].syncthing_id }}"
+        name: "{{ item }}"
+      become: yes
+      become_user: "{{ syncthing_service_user }}"
+      when: inventory_hostname != item
+      with_items: "{{ groups['syncthing'] }}"
+
+    - name: Ensure syncthing folders
+      syncthing_folder:
+        path: "{{ item.path | default(omit) }}"
+        id:   "{{ item.id }}"
+        devices: "{{ syncthing_ids }}"
+        state: "{{ item.state | default('present') }}"
+      become: yes
+      become_user: "{{ syncthing_service_user }}"
+      with_items: "{{ syncthing_folders }}"

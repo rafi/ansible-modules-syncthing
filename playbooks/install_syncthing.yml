@@ -1,0 +1,28 @@
+---
+
+- hosts: all
+  vars:
+    syncthing_apt_key_id: "D26E6ED000654A3E"
+    syncthing_apt_key_url: "https://syncthing.net/release-key.txt"
+    syncthing_apt_repository: "deb http://apt.syncthing.net/ syncthing release"
+    syncthing_service_user: root
+
+  tasks:
+    - name: Add Syncthing repository key
+      apt_key:
+        id: "{{ syncthing_apt_key_id }}"
+        url: "{{ syncthing_apt_key_url }}"
+        keyring: "/etc/apt/trusted.gpg.d/syncthing.gpg"
+
+    - name: Add Syncthing repository
+      apt_repository:
+        repo: "{{ syncthing_apt_repository }}"
+
+    - name: Install Syncthing package
+      apt: name=syncthing
+
+    - name: Enable and ensure Syncthing is started
+      systemd:
+        name: syncthing@{{ syncthing_service_user }}
+        enabled: yes
+        state: started
